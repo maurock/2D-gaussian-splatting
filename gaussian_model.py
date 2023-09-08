@@ -57,9 +57,16 @@ def get_density(gaussian, x):
     # print("Density shape: ", ret.shape)
 
     return ret.squeeze()
-
-
     # return ret
+
+
+def get_colour(gaussian):
+    """Return the colour of the gaussian."""
+    return gaussian.colour
+
+def get_opacity(gaussian):
+    """Return the opacity of the gaussian."""
+    return gaussian.opacity
 
 
 def is_positive_semi_definite(matrix):

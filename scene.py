@@ -19,12 +19,19 @@ class Scene2D(NamedTuple):
     # width: int
     # height: int
 
+    # gaussians: jnp.ndarray
+
+
 
 def init_scene(key, image, N: int) -> Scene2D:
     """Returns the initial model params."""
-    gaussians = [init_gaussian(key, image.shape[0], image.shape[1]) for _ in range(N)]
+    keys = get_new_keys(key, N)
+    gaussians = [init_gaussian(keys[i], image.shape[0], image.shape[1]) for i in range(N)]
     return Scene2D(gaussians)
 
+    ## Concat all atributes of a
+    # gaussians = [init_gaussian(key, image.shape[0], image.shape[1]) for _ in range(N)]
+    # return Scene2D(gaussians)
 
 
 # @partial(jax.jit, static_argnums=(0,))
@@ -40,9 +47,12 @@ def render_pixel(scene: Scene2D, x: jnp.ndarray):
     # col_len = len(colours.shape)
     # extra_len = len(densities.shape) - col_len
     # extra_dims = tuple([col_len+i for i in range(extra_len)])
-
     # colours = jnp.expand_dims(colours, axis=tuple(extra_dims))
     # opacities = jnp.expand_dims(opacities, axis=tuple(extra_dims))
+
+    # densities = jax.vmap(get_density, in_axes=0)(scene.gaussian, x)[:, None]
+    # colours = jax.vmap(get_colour, in_axes=0)(scene.gaussians)
+    # opacities = jax.vmap(get_opacity, in_axis=0)(scene.gaussians)
 
     return jnp.sum(densities * colours * opacities, axis=0)
 
@@ -108,7 +118,7 @@ def mse_loss(scene: Scene2D, ref_image: jnp.ndarray):
     """Calculate the MSE loss between the rendered image and the reference image."""
     image = render(scene, ref_image)
     ## Add penalty for values greater than 1
-    return jnp.mean((image - ref_image) ** 2) + 1.*jnp.sum(jnp.where(image >= 1., image, 0.))
+    return jnp.mean((image - ref_image) ** 2) + 1.*jnp.mean(jnp.where(image > 1., image, 0.))
 
 
 @partial(jax.jit, static_argnums=(3,))
@@ -125,10 +135,10 @@ def train_step(scene: Scene2D, ref_image: jnp.ndarray, opt_state, optimiser):
 
 if __name__=='__main__':
 
-    # key = jax.random.PRNGKey(27)
-    key = None
+    key = jax.random.PRNGKey(2)
+    # key = None
 
-    scene = init_scene(key, jnp.zeros((256, 256)), 25)
+    scene = init_scene(key, jnp.zeros((256, 256)), 50)
 
     # load image called luna.jpeg and save it as a numpy array
     ref_image = plt.imread('luna.jpeg')/255.
@@ -141,12 +151,16 @@ if __name__=='__main__':
     plt.show()
 
 
+    nb_iter = 10000
     ## Init optimiser
-    optimiser = optax.adam(1e-3)
-    ## Init optimiser state
+    ## Set exponential smoothing parameter to 0.9
+    # scheduler = optax.constant_decay(1e-3)
+    scheduler = optax.exponential_decay(1e-2, nb_iter, 0.90)
+    optimiser = optax.adam(scheduler)
     opt_state = optimiser.init(scene)
+
     ## Training loop
-    for i in range(5000):
+    for i in range(nb_iter):
         scene, opt_state, loss = train_step(scene, ref_image, opt_state, optimiser)
         # print("Loss: ", loss)
         ## Print loss and iteration number
