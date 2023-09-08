@@ -15,9 +15,9 @@ def init_gaussian(key, width=256., height=256.) -> Gaussian2D:
 
     ## Uniformly initialise parameters of a 2D gaussian
     mean = jax.random.uniform(keys[0], (2,), minval=0, maxval=min(width, height))
-    scaling = jax.random.uniform(keys[1], (2,), minval=min(width, height)/50, maxval=min(width, height)/5)
+    scaling = jax.random.uniform(keys[1], (2,), minval=min(width, height)/100, maxval=min(width, height)/2)
     rotation = jax.random.uniform(keys[2], (1,), minval=0, maxval=2*jnp.pi)
-    opacity = jax.random.uniform(keys[3], (1,), minval=0.95, maxval=1)
+    opacity = jax.random.uniform(keys[3], (1,), minval=0.99, maxval=1)
     colour = jax.random.uniform(keys[4], (3,), minval=0, maxval=1)
 
     return jnp.concatenate([mean, scaling, rotation, opacity, colour])

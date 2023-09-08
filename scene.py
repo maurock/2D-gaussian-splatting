@@ -96,18 +96,33 @@ def render(scene: Scene2D, ref_image: jnp.ndarray):
     return image.squeeze()
 
 
-# @jax.value_and_grad
+def penalty_loss(image):
+    return jnp.mean(jnp.where(image > 1., image, 0.))
+
 def mse_loss(scene: Scene2D, ref_image: jnp.ndarray):
     """Calculate the MSE loss between the rendered image and the reference image."""
     image = render(scene, ref_image)
     ## Add penalty for values greater than 1
-    return jnp.mean((image - ref_image) ** 2) + 1.*jnp.mean(jnp.where(image > 1., image, 0.))
+    return jnp.mean((image - ref_image) ** 2) + 1.*penalty_loss(image)
+
+def mae_loss(scene: Scene2D, ref_image: jnp.ndarray):
+    """Calculate the MSE loss between the rendered image and the reference image."""
+    image = render(scene, ref_image)
+    ## Add penalty for values greater than 1
+    return jnp.mean(jnp.abs(image - ref_image)) + 1.*penalty_loss(image)
+
+
+def dice_loss(scene: Scene2D, ref_image: jnp.ndarray):
+    """Calculate the MSE loss between the rendered image and the reference image."""
+    image = render(scene, ref_image)
+    ## Add penalty for values greater than 1
+    return (jnp.sum(image * ref_image) * 2 / jnp.sum(image) + jnp.sum(ref_image)) + 1.*penalty_loss(image)
 
 
 @partial(jax.jit, static_argnums=(3,))
 def train_step(scene: Scene2D, ref_image: jnp.ndarray, opt_state, optimiser):
     """Perform a single training step."""
-    loss, grad = jax.value_and_grad(mse_loss)(scene, ref_image)
+    loss, grad = jax.value_and_grad(mae_loss)(scene, ref_image)
     updates, new_opt_state = optimiser.update(grad, opt_state)
     new_scene = optax.apply_updates(scene, updates)
     return new_scene, new_opt_state, loss
@@ -123,7 +138,7 @@ if __name__=='__main__':
     key = jax.random.PRNGKey(time.time_ns())
     # key = None
 
-    scene = init_scene(key, jnp.zeros((256, 256)), 50)
+    scene = init_scene(key, jnp.zeros((256, 256)), 20)
 
     # load image called luna.jpeg and save it as a numpy array
     ref_image = plt.imread('luna.jpeg')/255.
@@ -136,22 +151,24 @@ if __name__=='__main__':
     plt.show()
 
 
-    nb_iter = 1000
+    nb_iter = 10000
     ## Init optimiser
     ## Set exponential smoothing parameter to 0.9
     # scheduler = optax.constant_decay(1e-3)
-    scheduler = optax.exponential_decay(1e-2, nb_iter, 0.90)
+    scheduler = optax.exponential_decay(1e-1, nb_iter, 0.90)
     optimiser = optax.adam(scheduler)
     opt_state = optimiser.init(scene)
 
+    losses = []
     # start_time = time.time()
     ## Training loop
-    for i in tqdm(range(nb_iter)):
+    for i in tqdm(range(nb_iter), disable=True):
         scene, opt_state, loss = train_step(scene, ref_image, opt_state, optimiser)
         # print("Loss: ", loss)
         ## Print loss and iteration number
-        if i % 100 == 0 or i < 3:
-            print(f'Iteration: {i}            Loss: {loss:.3f}')
+        losses.append(loss)
+        if i % 1000 == 0 or i < 3:
+            print(f'Iteration: {i}  Loss: {loss:.3f}')
     # wall_time = time.time() - start_time
 
     ## Print time and number of params in scene
@@ -163,5 +180,8 @@ if __name__=='__main__':
     plt.imshow(image)
     plt.show()
 
+
+    ## Plot loss in log scale
+    # plt.plot(losses)
 
     print('Done')
