@@ -7,57 +7,39 @@ from typing import NamedTuple
 
 from utils import get_new_keys
 
-
-
-
-
-
-class Gaussian2D(NamedTuple):
-    """Definition of a 2D Gaussian."""
-    mean: jnp.ndarray
-    scaling: jnp.ndarray
-    rotation: jnp.ndarray
-    opacity: jnp.ndarray
-    colour: jnp.ndarray
-
-
+Gaussian2D = jnp.ndarray
 
 def init_gaussian(key, width=256., height=256.) -> Gaussian2D:
     """Returns the initial model params."""
     keys = get_new_keys(key, 5)
 
     ## Uniformly initialise parameters of a 2D gaussian
-    mean = jax.random.uniform(keys[0], (2,1), minval=0, maxval=min(width, height))
-    scaling = jax.random.uniform(keys[1], (2,1), minval=0, maxval=min(width, height)/5)
+    mean = jax.random.uniform(keys[0], (2,), minval=0, maxval=min(width, height))
+    scaling = jax.random.uniform(keys[1], (2,), minval=min(width, height)/50, maxval=min(width, height)/5)
     rotation = jax.random.uniform(keys[2], (1,), minval=0, maxval=2*jnp.pi)
-    opacity = jax.random.uniform(keys[3], (1,), minval=0, maxval=1)
-    colour = jax.random.uniform(keys[4], (1,3), minval=0, maxval=1)
+    opacity = jax.random.uniform(keys[3], (1,), minval=0.95, maxval=1)
+    colour = jax.random.uniform(keys[4], (3,), minval=0, maxval=1)
 
-    return Gaussian2D(mean, scaling, rotation, opacity, colour)
+    return jnp.concatenate([mean, scaling, rotation, opacity, colour])
 
 
-def get_covariance(gaussian: Gaussian2D):
+def get_covariance(scaling, rotation):
     """Calculate the covariance matrix. """
-    scaling_matrix = jnp.diag(gaussian.scaling.squeeze())
+    scaling_matrix = jnp.diag(scaling)
 
-    cos, sin = jnp.cos(gaussian.rotation), jnp.sin(gaussian.rotation)
+    cos, sin = jnp.cos(rotation), jnp.sin(rotation)
     rotation_matrix = jnp.array([[cos, -sin], [sin, cos]]).squeeze()
-
-    # print("Covariance mat shape: ", (rotation_matrix @ scaling_matrix @ scaling_matrix.T @ rotation_matrix.T).shape)
 
     return rotation_matrix @ scaling_matrix @ scaling_matrix.T @ rotation_matrix.T 
 
 
-def get_density(gaussian, x):
+def get_density(mean, scaling, rotation, x):
     """Calculate the density of the gaussian at a given point."""
-    ret = jnp.exp(-0.5 * (x - gaussian.mean).T  @ jnp.linalg.inv(get_covariance(gaussian)) @ (x - gaussian.mean))
 
-    # print(" shapes: ", x.shape, gaussian.mean.shape,)
-    # print("Density shape: ", ((x - gaussian.mean).T  @ jnp.linalg.inv(get_covariance(gaussian)) @ (x - gaussian.mean)).shape)
-    # print("Density shape: ", ret.shape)
+    x_ = (x - mean)[:, None]
 
-    return ret.squeeze()
-    # return ret
+    return jnp.exp(-0.5 * x_.T @ jnp.linalg.inv(get_covariance(scaling, rotation)) @ x_).squeeze()
+
 
 
 def get_colour(gaussian):

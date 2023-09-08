@@ -7,17 +7,17 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import optax
+from tqdm import tqdm
+import time
 
 from typing import List, NamedTuple
 from gaussian_model import *
 from functools import partial
 
+Scene2D = jnp.ndarray
 
-class Scene2D(NamedTuple):
-    """Definition of a 2D Scene."""
-    gaussians: List[Gaussian2D]
-    # width: int
-    # height: int
+# class Scene2D(NamedTuple):
+    # """Definition of a 2D Scene."""
 
     # gaussians: jnp.ndarray
 
@@ -27,7 +27,7 @@ def init_scene(key, image, N: int) -> Scene2D:
     """Returns the initial model params."""
     keys = get_new_keys(key, N)
     gaussians = [init_gaussian(keys[i], image.shape[0], image.shape[1]) for i in range(N)]
-    return Scene2D(gaussians)
+    return jnp.stack(gaussians, axis=0)
 
     ## Concat all atributes of a
     # gaussians = [init_gaussian(key, image.shape[0], image.shape[1]) for _ in range(N)]
@@ -39,9 +39,9 @@ def render_pixel(scene: Scene2D, x: jnp.ndarray):
     """Render a single pixel."""
     # densities = jnp.concatenate([get_density(gaussian, x) for gaussian in scene.gaussians], axis=0)
 
-    densities = jnp.array([get_density(gaussian, x) for gaussian in scene.gaussians])[:, None]
-    colours = jnp.concatenate([gaussian.colour for gaussian in scene.gaussians], axis=0)
-    opacities = jnp.array([gaussian.opacity for gaussian in scene.gaussians])
+    # densities = jnp.array([get_density(gaussian, x) for gaussian in scene.gaussians])[:, None]
+    # colours = jnp.concatenate([gaussian.colour for gaussian in scene.gaussians], axis=0)
+    # opacities = jnp.array([gaussian.opacity for gaussian in scene.gaussians])
 
     # ## Ugly trick to add extra dimensions to colours and opacities (For VMAPPING)
     # col_len = len(colours.shape)
@@ -50,13 +50,18 @@ def render_pixel(scene: Scene2D, x: jnp.ndarray):
     # colours = jnp.expand_dims(colours, axis=tuple(extra_dims))
     # opacities = jnp.expand_dims(opacities, axis=tuple(extra_dims))
 
-    # densities = jax.vmap(get_density, in_axes=0)(scene.gaussian, x)[:, None]
+
+    means = scene[:, :2]
+    scalings = scene[:, 2:4]
+    rotations = scene[:, 4:5]
+    opacities = scene[:, 5:6]
+    colours = scene[:, 6:]
+
+    densities = jax.vmap(get_density, in_axes=(0, 0, 0, None))(means, scalings, rotations, x)[:, None]
     # colours = jax.vmap(get_colour, in_axes=0)(scene.gaussians)
     # opacities = jax.vmap(get_opacity, in_axis=0)(scene.gaussians)
 
     return jnp.sum(densities * colours * opacities, axis=0)
-
-
 
     # densities = [get_density(gaussian, x)[None, :] for gaussian in scene.gaussians]
     # colours = [gaussian.colour for gaussian in scene.gaussians]
@@ -80,34 +85,12 @@ def render(scene: Scene2D, ref_image: jnp.ndarray):
         3. Multiply each footprint value by its RGB
         4. Average the resulting values
     """
-    image = jnp.zeros_like(ref_image)
-
-    # for (int i = 0; i < N-1; i++){
-    #     for (int j = 0; j < M-1; j++){
-    #         l = i + j*(N-1);
-
-    # for i in range(0, image.shape[0]):
-    #     for j in range(0, image.shape[1]):
-
-    #         x = jnp.array([i, j], dtype=jnp.float32)[:, None]
-
-    #         # densities = jnp.concatenate([get_density(gaussian, x) for gaussian in scene.gaussians], axis=0)
-    #         # colours = jnp.concatenate([gaussian.colour for gaussian in scene.gaussians], axis=0)
-    #         # opacities = jnp.array([gaussian.opacity for gaussian in scene.gaussians])
-
-    #         # image = image.at[i, j, :].set(jnp.sum(densities * colours * opacities, axis=0))
-
-    #         image = image.at[i, j, :].set(render_pixel(scene, x))
-
-
 
     ## X is the meshgrids
     meshgrid = jnp.meshgrid(jnp.arange(0, ref_image.shape[0]), jnp.arange(0, ref_image.shape[1]))
-    xs = jnp.stack(meshgrid, axis=0).T[..., None]
+    pixels = jnp.stack(meshgrid, axis=0).T
 
-    # print("xs shape: ", xs.shape)
-    image = render_pixels_2D(scene, xs)
-
+    image = render_pixels_2D(scene, pixels)
 
     # image = image/image.max()
     return image.squeeze()
@@ -134,8 +117,10 @@ def train_step(scene: Scene2D, ref_image: jnp.ndarray, opt_state, optimiser):
 
 
 if __name__=='__main__':
+    # %timeit
 
-    key = jax.random.PRNGKey(2)
+
+    key = jax.random.PRNGKey(time.time_ns())
     # key = None
 
     scene = init_scene(key, jnp.zeros((256, 256)), 50)
@@ -151,7 +136,7 @@ if __name__=='__main__':
     plt.show()
 
 
-    nb_iter = 10000
+    nb_iter = 1000
     ## Init optimiser
     ## Set exponential smoothing parameter to 0.9
     # scheduler = optax.constant_decay(1e-3)
@@ -159,14 +144,19 @@ if __name__=='__main__':
     optimiser = optax.adam(scheduler)
     opt_state = optimiser.init(scene)
 
+    # start_time = time.time()
     ## Training loop
-    for i in range(nb_iter):
+    for i in tqdm(range(nb_iter)):
         scene, opt_state, loss = train_step(scene, ref_image, opt_state, optimiser)
         # print("Loss: ", loss)
         ## Print loss and iteration number
         if i % 100 == 0 or i < 3:
             print(f'Iteration: {i}            Loss: {loss:.3f}')
+    # wall_time = time.time() - start_time
 
+    ## Print time and number of params in scene
+    print(f'Number of params: {jnp.size(scene)}')
+    print("Number of pixels: ", jnp.size(ref_image))
 
     ## Evaluate the final scene
     image = render(scene, ref_image)
