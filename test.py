@@ -14,13 +14,23 @@ from typing import List, NamedTuple
 from gaussian_model import *
 from functools import partial
 
+import os
+os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = "false"
+# jax.config.update('jax_platform_name', 'cpu')           ## CPU is faster here !
+jax.config.update("jax_enable_x64", True)
+
 Scene2D = jnp.ndarray
 
-# class Scene2D(NamedTuple):
-    # """Definition of a 2D Scene."""
+#%%
 
-    # gaussians: jnp.ndarray
+x = jnp.linspace(0,10,101)
+y = jnp.sin(x)
 
+plt.plot(x,y)
+
+
+
+#%%
 
 
 def init_scene(key, image, N: int) -> Scene2D:
@@ -142,7 +152,7 @@ if __name__=='__main__':
     # key = jax.random.PRNGKey(time.time_ns())
     # key = None
 
-    scene = init_scene(key, jnp.zeros((256, 256)), 2000)
+    scene = init_scene(key, jnp.zeros((256, 256)), 500)
 
     # load image called luna.jpeg and save it as a numpy array
     ref_image = plt.imread('luna.jpeg')/255.
@@ -158,7 +168,7 @@ if __name__=='__main__':
     plt.show()
 
 
-    nb_iter = 1500
+    nb_iter = 1000
     ## Init optimiser
     ## Set exponential smoothing parameter to 0.9
     # scheduler = optax.constant_decay(1e-3)
@@ -200,16 +210,7 @@ if __name__=='__main__':
     print('Done')
 
 #%%
-
-## Evaluate the final scene
-# image = render(scene, ref_image)
-#
-# fig, (ax) = plt.subplots(1, 2)
-# ax[0].imshow(image)
-# ax[0].set_title("Final render")
-#
-# ax[1].imshow(ref_image)
-# ax[1].set_title("Reference")
-# plt.show()
-
-# print(image)
+plt.savefig("final_render")
+#%%
+plt.imread("final_render.png")
+#%%
