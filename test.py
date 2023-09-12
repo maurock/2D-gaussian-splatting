@@ -17,16 +17,16 @@ from functools import partial
 import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = "false"
 # jax.config.update('jax_platform_name', 'cpu')           ## CPU is faster here !
-jax.config.update("jax_enable_x64", True)
+# jax.config.update("jax_enable_x64", True)
 
 Scene2D = jnp.ndarray
 
 #%%
 
-x = jnp.linspace(0,10,101)
-y = jnp.sin(x)
+# x = jnp.linspace(0,10,101)
+# y = jnp.sin(x)
 
-plt.plot(x,y)
+# plt.plot(x,y)
 
 
 
@@ -72,13 +72,8 @@ def render_pixel(scene: Scene2D, x: jnp.ndarray):
     # opacities = jax.vmap(get_opacity, in_axis=0)(scene.gaussians)
 
     return jnp.sum(densities * colours * opacities, axis=0)
+    # return jax.nn.sigmoid(jnp.sum(densities * colours * opacities, axis=0))
 
-    # densities = [get_density(gaussian, x)[None, :] for gaussian in scene.gaussians]
-    # colours = [gaussian.colour for gaussian in scene.gaussians]
-    # opacities = [gaussian.opacity for gaussian in scene.gaussians]
-
-    # pytree = jax.tree_map(lambda d, c, o: d*c*o, densities, colours, opacities)
-    # return jnp.sum(pytree, axis=0)
 
 
 render_pixels_1D = jax.vmap(render_pixel, in_axes=(None, 0), out_axes=0)
@@ -141,76 +136,81 @@ def train_step(scene: Scene2D, ref_image: jnp.ndarray, opt_state, optimiser):
     return new_scene, new_opt_state, loss
 
 
+#%%
 ## Print the Scene2D as a pytree
 
 
-if __name__=='__main__':
+# if __name__=='__main__':
     # %timeit
 
 
-    key = jax.random.PRNGKey(42)
-    # key = jax.random.PRNGKey(time.time_ns())
-    # key = None
+# key = jax.random.PRNGKey(42)
+key = jax.random.PRNGKey(time.time_ns())
+# key = None
 
-    scene = init_scene(key, jnp.zeros((256, 256)), 500)
+# scene = init_scene(key, jnp.zeros((256, 256)), 1000)
+scene = init_scene(key, jnp.zeros((100, 100)), 2000)
 
-    # load image called luna.jpeg and save it as a numpy array
-    ref_image = plt.imread('luna.jpeg')/255.
-    plt.imshow(ref_image)
-    plt.show()
+# load image called luna.jpeg and save it as a numpy array
+# ref_image = plt.imread('luna.jpeg')/255.
 
+ref_image = plt.imread('earth.jpeg')[...,:3]/255.
 
-
-
-    image = render(scene, ref_image)
-
-    plt.imshow(image)
-    plt.show()
+plt.imshow(ref_image)
+plt.show()
 
 
-    nb_iter = 1000
-    ## Init optimiser
-    ## Set exponential smoothing parameter to 0.9
-    # scheduler = optax.constant_decay(1e-3)
-    scheduler = optax.exponential_decay(1e-1, nb_iter, 0.75)
-    optimiser = optax.adam(scheduler)
-    opt_state = optimiser.init(scene)
-
-    losses = []
-    # start_time = time.time()
-    ## Training loop
-    for i in tqdm(range(1, nb_iter+1), disable=True):
-        scene, opt_state, loss = train_step(scene, ref_image, opt_state, optimiser)
-        # print("Loss: ", loss)
-        ## Print loss and iteration number
-        losses.append(loss)
-        if i % 100 == 0 or i <= 3:
-            print(f'Iteration: {i}  Loss: {loss:.3f}')
-    # wall_time = time.time() - start_time
-
-    ## Print time and number of params in scene
-    print(f'Number of params: {jnp.size(scene)}')
-    print("Number of pixels: ", jnp.size(ref_image))
-
-    ## Evaluate the final scene
-    image = render(scene, ref_image)
-
-    fig, (ax) = plt.subplots(1, 2)
-    ax[0].imshow(image)
-    ax[0].set_title("Final render")
-
-    ax[1].imshow(ref_image)
-    ax[1].set_title("Reference")
-    plt.show()
 
 
-    ## Plot loss in log scale
-    # plt.plot(losses)
+image = render(scene, ref_image)
 
-    print('Done')
+plt.imshow(image)
+plt.show()
+
+
+nb_iter = 2000
+## Init optimiser
+## Set exponential smoothing parameter to 0.9
+# scheduler = optax.constant_decay(1e-3)
+scheduler = optax.exponential_decay(1e-3, nb_iter, 0.9)
+optimiser = optax.adam(scheduler)
+opt_state = optimiser.init(scene)
+
+losses = []
+# start_time = time.time()
+## Training loop
+for i in tqdm(range(1, nb_iter+1), disable=True):
+    scene, opt_state, loss = train_step(scene, ref_image, opt_state, optimiser)
+    # print("Loss: ", loss)
+    ## Print loss and iteration number
+    losses.append(loss)
+    if i % 100 == 0 or i <= 3:
+        print(f'Iteration: {i}  Loss: {loss:.3f}')
+# wall_time = time.time() - start_time
+
+## Print time and number of params in scene
+print(f'Number of params: {jnp.size(scene)}')
+print("Number of pixels: ", jnp.size(ref_image))
+
+## Evaluate the final scene
+image = render(scene, ref_image)
+
+fig, (ax) = plt.subplots(1, 2)
+ax[0].imshow(image)
+ax[0].set_title("Final render")
+
+ax[1].imshow(ref_image)
+ax[1].set_title("Reference")
+plt.show()
+
+
+## Plot loss in log scale
+# plt.plot(losses)
+
+print('Done')
 
 #%%
-plt.savefig("final_render")
-#%%
-plt.imread("final_render.png")
-#%%
+# plt.savefig("final_render")
+# #%%
+# plt.imread("final_render.png")
+# #%%
